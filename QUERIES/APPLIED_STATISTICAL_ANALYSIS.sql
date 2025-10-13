@@ -1,0 +1,71 @@
+USE BOOKINGS_PROJECT
+--DESCRIPTIVE ANALYSIS: MEAN, MEDIAN AND STANDARD DEVIATION
+---MEAN:
+SELECT ROUND(AVG(BOOKING_VALUE),2) AS AVG_Booking_Value,
+ROUND(AVG(RIDE_DISTANCE),2) AS AVG_RIDE_DIS
+FROM BOOKINGS;
+--MEDIAN FOR BOOKINGS_VALUE
+SELECT
+(
+ (SELECT MAX(BOOKING_VALUE) FROM
+   (SELECT TOP 50 PERCENT BOOKING_VALUE FROM BOOKINGS ORDER BY BOOKING_VALUE) AS BottomHalf)
+ +
+ (SELECT MIN(BOOKING_VALUE) FROM
+   (SELECT TOP 50 PERCENT BOOKING_VALUE FROM BOOKINGS ORDER BY BOOKING_VALUE DESC) AS TopHalf)
+) / 2 AS Booking_Value_Median
+--MEDIAN FOR RIDE DISTANCE
+SELECT
+(
+ (SELECT MAX(RIDE_DISTANCE) FROM
+   (SELECT TOP 50 PERCENT RIDE_DISTANCE FROM BOOKINGS ORDER BY RIDE_DISTANCE) AS BottomHalf)
+ +
+ (SELECT MIN(RIDE_DISTANCE) FROM
+   (SELECT TOP 50 PERCENT RIDE_DISTANCE FROM BOOKINGS ORDER BY RIDE_DISTANCE DESC) AS TopHalf)
+) / 2 AS Ride_Distance_Median
+
+--STANDARD DEVIATION
+SELECT ROUND(STDEV(BOOKING_VALUE),2) AS STD_Booking_Value,
+ROUND(STDEV(RIDE_DISTANCE),2) AS STD_RIDE_DIS
+FROM BOOKINGS;
+--CORRELATION ANALYSIS: BETWEEN BOOKING VALUES AND RIDE DISTANCE
+SELECT 
+    SUM((bv - avg_bv) * (rd - avg_rd)) / 
+    SQRT(SUM(POWER(bv - avg_bv, 2)) * SUM(POWER(rd - avg_rd, 2))) AS Pearson_Correlation
+FROM (
+    SELECT 
+        Booking_Value AS bv,
+        Ride_Distance AS rd,
+        AVG(Booking_Value) OVER () AS avg_bv,
+        AVG(Ride_Distance) OVER () AS avg_rd
+    FROM BOOKINGS
+) AS stats;
+--OUTLIER DETECTION: Q1, Q3, IQR, TOP 20 OUTLIERS FOR BOOKING ID, ROUTE & BOOKING VALUE
+WITH percentiles AS (
+    SELECT
+        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY Booking_Value) OVER () AS Q1,
+        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY Booking_Value) OVER () AS Q3
+    FROM bookings
+),
+iqr_values AS (
+    SELECT DISTINCT
+        Q1,
+        Q3,
+        (Q3 - Q1) AS IQR,
+        (Q3 + 1.5 * (Q3 - Q1)) AS upper_bound
+    FROM percentiles
+),
+outliers AS (
+    SELECT
+        b.Booking_ID,
+        b.Route,
+        b.Booking_Value
+    FROM bookings b
+    CROSS JOIN iqr_values
+    WHERE b.Booking_Value > iqr_values.upper_bound
+)
+SELECT TOP 20
+    Booking_ID,
+    Route,
+    Booking_Value
+FROM outliers
+ORDER BY Booking_Value DESC;
